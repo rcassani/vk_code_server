@@ -1,7 +1,8 @@
-// keyboard_hook.cpp
+// vk_code_server.cpp
 // 
-// Installs a Low Level Keyboard Hook WH_KEYBOARD_LL
-// The values shown are UINT8 Virtual-Key Codes
+// 1. Installs a Low Level Keyboard Hook WH_KEYBOARD_LL
+// 2. If a PORT number is provided as argument, it creates a TCP/IP server to stream the Virtual-Key Code
+// 
 // https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731(v=vs.85).aspx
 // Raymundo Cassani
 // 2016
@@ -9,7 +10,6 @@
 #ifndef WIN32_LEAN_AND_MEAN		//TCP
 #define WIN32_LEAN_AND_MEAN     //TCP
 #endif                          //TCP
-
 
 #include <iostream>
 #include <Windows.h>    // HOOKS
@@ -24,7 +24,7 @@
 
 // HHOOK variable
 HHOOK hHook{ NULL };
-BOOL client_cnx = false;
+BOOL server_active = false;
 SOCKET ClientSocket = INVALID_SOCKET;
 
 /*
@@ -41,48 +41,22 @@ LRESULT CALLBACK CatchLowLevelKeyboardProc(const int nCode, const WPARAM wParam,
 	switch (wParam)
 	{
 	case WM_KEYDOWN:
-		printf("KeyDown event, Key = %d = %c \r\n ", keyInfo.vkCode, keyInfo.vkCode);
+		wchar_t buffer[32] = {};
+		UINT key = (keyInfo.scanCode << 16);
+		GetKeyNameText((LONG)key, buffer, sizeof(buffer));
+		wprintf(L"KEYDOWN event, Virtual-Key Code = %#.2X. Key Name = %s \r\n", keyInfo.vkCode, buffer);
 		if (ClientSocket != INVALID_SOCKET)
 		{
 			unsigned char buf[1];
-			buf[0] = (keyInfo.vkCode >> 0) & 0xff;
-			
-			printf("ClientSocket = OK2");
+			buf[0] = (keyInfo.vkCode >> 0);
 			int iSendResult = send(ClientSocket, (char*)buf, sizeof(buf), 0);
-			printf("%d", iSendResult);
+			printf("Byte sent = %#.2X \r\n", buf[0]);
 		}
 		break;
 	}
 	// Passes the hook information to the next hook procedure. So other hooks can work
 	return CallNextHookEx(hHook, nCode, wParam, lParam);
 }
-
-
-/*
- * Handles Close (X in corner) and Ctrl-C interruption
-
-BOOL CtrlHandler(DWORD fdwCtrlType)
-{
-	//running = false;
-	printf("%d", fdwCtrlType);
-	switch (fdwCtrlType)
-	{
-		// Handle the CTRL-C signal. 
-	case CTRL_C_EVENT:
-		printf("control C");
-		return(FALSE);
-	
-		// CTRL-CLOSE (X in corner)
-	case CTRL_CLOSE_EVENT:
-		printf("TAAACHE\n\n");
-		Beep(600, 600);
-		return(TRUE);
-
-	default:
-		return TRUE;
-	}
-}
-*/
 
 /*
  * Creates Listening Socket (Server)
@@ -167,7 +141,28 @@ int main(int argc, char* argv[])
 	char *port = NULL;
 	SOCKET ListenSocket = INVALID_SOCKET;
 
-	
+	// Getting arguments & Creating ListenSocket
+	if (argc != 2)
+	{
+		printf("Usage: %s <PORT>\n", argv[0]);
+		printf("KEYDOWN events will not be streamed\n");
+		server_active = false;
+	}
+	else
+	{
+		port = argv[1];
+		printf("Opening Listnener at port: %s\n", port);
+		ListenSocket = CreateListenSocket(port);
+		if (ListenSocket == INVALID_SOCKET)
+		{
+			printf("Error at creating listener at port: %s\n", port);
+			printf("KEYDOWN events will not be streamed\n");
+			server_active = false;
+		}
+		server_active = true;
+	}
+	Sleep(2000);
+
 	// Installing HOOK
 	printf("Installing the hook\r\n");
 	hHook = SetWindowsHookEx(WH_KEYBOARD_LL, CatchLowLevelKeyboardProc, NULL, 0);
@@ -180,54 +175,21 @@ int main(int argc, char* argv[])
 		printf("Error installing hook\r\n");
 	}
 
-	/* 
-	if (SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE))
+	// Wait for Client
+	if (server_active)
 	{
-		printf("Handler added successfully\r\n");
-	}
-	else
-	{
-		printf("Error adding handler\r\n");
-	}
-	*/
-	
-	// Getting arguments & Creating ListenSocket
-	if (argc != 2)
-	{
-		printf("Usage: %s <PORT>\n", argv[0]);
-		printf("KEYDOWN events will not be streamed\n");
-	}
-	else
-	{
-		port = argv[1];
-		printf("Opening Listnener at port: %s\n", port);
-		ListenSocket = CreateListenSocket(port);
-		if (ListenSocket == INVALID_SOCKET)
+		printf("Waiting for a Client ... \r\n");
+		ClientSocket = ConnectClientSocket(ListenSocket);
+		if (ClientSocket == INVALID_SOCKET)
 		{
-			printf("Error at creating listener at port: %s\n", port);
-			printf("KEYDOWN events will not be streamed\n");
+			printf("ClientSocket = Invalid\r\n");
+		}
+		else
+		{
+			printf("Successful connetion with Client\r\n");
 		}
 	}
-
-	printf("client_cnx was false, waiting for client ...");
-	ClientSocket = ConnectClientSocket(ListenSocket);
-	if (ClientSocket == INVALID_SOCKET)
-	{
-		printf("ClientSocket = Invalid");
-		client_cnx = false;
-	}
-	else
-	{
-		printf("ClientSocket = OK");
-		client_cnx = true;
-	}
-
-
-		
-	while (true)
-	{		
-		GetMessage(NULL, NULL, 0, 0);
-	}
 	
+	GetMessage(NULL, NULL, 0, 0);
 	return 0;
 }
