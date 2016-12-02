@@ -19,6 +19,7 @@
 #include <ws2tcpip.h>   // TCP
 #include <stdlib.h>     // TCP
 #include <ctime>        // LOG
+#include <time.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "Ws2_32.lib")             //TCP
@@ -29,6 +30,7 @@
 HHOOK hHook{ NULL };
 SOCKET ClientSocket = INVALID_SOCKET;
 char filename[80];
+uint64_t boottime_utc_ms;
 
 /*
  * Event Handler (callback funtion), it is called in response to a change in the state of a key
@@ -48,10 +50,10 @@ LRESULT CALLBACK CatchLowLevelKeyboardProc(const int nCode, const WPARAM wParam,
 		wchar_t buffer[32] = {};
 		UINT key = (keyInfo.scanCode << 16);
 		GetKeyNameText((LONG)key, buffer, sizeof(buffer));
-		wprintf(L"KEYDOWN event, Virtual-Key Code = %#.2X. Key Name = %s \r\n", keyInfo.vkCode, buffer);
+		wprintf(L"KEYDOWN event, Time = %llu \t Virtual-Key Code = %#.2X \t Key Name = %s \r\n", boottime_utc_ms + keyInfo.time, keyInfo.vkCode, buffer);
 		// Write Log
 		pFile = fopen(filename, "a");
-		fwprintf(pFile, L"%d, %d, %s\r\n", keyInfo.time, keyInfo.vkCode, buffer);
+		fwprintf(pFile, L"%llu, %d, %s\n", boottime_utc_ms + keyInfo.time, keyInfo.vkCode, buffer);
 		fclose(pFile);
 		if (ClientSocket != INVALID_SOCKET)
 		{
@@ -166,14 +168,23 @@ int main(int argc, char* argv[])
 			printf("KEYDOWN events will not be streamed\n");
 		}
 	}
+	// Computer boottime, UTC in milliseconds
+	SYSTEMTIME tmp_time;
+	GetSystemTime(&tmp_time);
+	boottime_utc_ms = (time(NULL) * 1000) + tmp_time.wMilliseconds - GetTickCount64();
+
 	Sleep(2000);
 	// Create filename for log from time
 	time_t rawtime;
+	//boot_ms_utc = boot_ms_utc - GetTickCount64();
 	struct tm * timeinfo;
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 	strftime(filename, 80, "log%Y%m%d_%H%M%S_vk.csv", timeinfo);
 	puts(filename);
+	FILE * pFile = fopen(filename, "a");
+	fwprintf(pFile, L"Timestamp, VK code, Key\n");
+	fclose(pFile);
 	
 	// Installing HOOK
 	printf("Installing the hook\r\n");
